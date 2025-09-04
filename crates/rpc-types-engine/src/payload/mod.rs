@@ -6,9 +6,9 @@ pub mod v4;
 
 use crate::{OpExecutionPayloadSidecar, OpExecutionPayloadV4};
 use alloc::vec::Vec;
-use alloy_consensus::{Block, BlockHeader, Transaction};
+use alloy_consensus::{Block, BlockHeader, HeaderInfo, Transaction};
 use alloy_eips::{Decodable2718, Encodable2718, Typed2718, eip7685::EMPTY_REQUESTS_HASH};
-use alloy_primitives::{B256, Bytes, Sealable};
+use alloy_primitives::{Address, B256, Bytes, Sealable, U256};
 use alloy_rpc_types_engine::{
     ExecutionPayload, ExecutionPayloadInputV2, ExecutionPayloadV1, ExecutionPayloadV2,
     ExecutionPayloadV3, PayloadError,
@@ -634,6 +634,51 @@ impl OpExecutionPayload {
 
         Ok(base_payload)
     }
+
+    /// Extracts essential information into one container type.
+    pub fn header_info(&self) -> HeaderInfo {
+        HeaderInfo {
+            number: self.block_number(),
+            beneficiary: self.fee_recipient(),
+            timestamp: self.timestamp(),
+            gas_limit: self.gas_limit(),
+            base_fee_per_gas: Some(self.saturated_base_fee_per_gas()),
+            excess_blob_gas: self.excess_blob_gas(),
+            blob_gas_used: self.blob_gas_used(),
+            difficulty: U256::ZERO,
+            mix_hash: Some(self.prev_randao()),
+        }
+    }
+
+    /// Returns the fee recipient for the payload.
+    pub const fn fee_recipient(&self) -> Address {
+        self.as_v1().fee_recipient
+    }
+
+    /// Returns the gas limit.
+    pub const fn gas_limit(&self) -> u64 {
+        self.as_v1().gas_limit
+    }
+
+    /// Returns the saturated base fee per gas for the payload.
+    pub fn saturated_base_fee_per_gas(&self) -> u64 {
+        self.as_v1().base_fee_per_gas.saturating_to()
+    }
+
+    /// Returns the excess blob gas for the payload.
+    pub fn excess_blob_gas(&self) -> Option<u64> {
+        self.as_v3().map(|payload| payload.excess_blob_gas)
+    }
+
+    /// Returns the blob gas used for the payload.
+    pub fn blob_gas_used(&self) -> Option<u64> {
+        self.as_v3().map(|payload| payload.blob_gas_used)
+    }
+
+    /// Returns the prev randao for the payload.
+    pub const fn prev_randao(&self) -> B256 {
+        self.as_v1().prev_randao
+    }
 }
 
 #[cfg(test)]
@@ -699,5 +744,33 @@ mod tests {
         let payload: Result<OpExecutionPayload, serde_json::Error> =
             serde_json::from_str(response_faulty);
         assert!(payload.is_err());
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn test_header_info() {
+        // Test with a V4 payload that includes blob gas fields
+        let response_v4 = r#"{"parentHash":"0xe927a1448525fb5d32cb50ee1408461a945ba6c39bd5cf5621407d500ecc8de9","feeRecipient":"0x0000000000000000000000000000000000000000","stateRoot":"0x10f8a0830000e8edef6d00cc727ff833f064b1950afd591ae41357f97e543119","receiptsRoot":"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421","logsBloom":"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000","prevRandao":"0xe0d8b4521a7da1582a713244ffb6a86aa1726932087386e2dc7973f43fc6cb24","blockNumber":"0x1","gasLimit":"0x2ffbd2","gasUsed":"0x0","timestamp":"0x1235","extraData":"0xd883010d00846765746888676f312e32312e30856c696e7578","baseFeePerGas":"0x342770c0","blockHash":"0x44d0fa5f2f73a938ebb96a2a21679eb8dea3e7b7dd8fd9f35aa756dda8bf0a8a","transactions":[],"withdrawals":[],"blobGasUsed":"0x1","excessBlobGas":"0x1","withdrawalsRoot":"0x10f8a0830000e8edef6d00cc727ff833f064b1950afd591ae41357f97e543119"}"#;
+
+        let payload: OpExecutionPayload = serde_json::from_str(response_v4).unwrap();
+        let header_info = payload.header_info();
+
+        // Verify all fields are correctly set
+        assert_eq!(header_info.number, 0x1);
+        assert_eq!(header_info.beneficiary, Address::ZERO);
+        assert_eq!(header_info.timestamp, 0x1235);
+        assert_eq!(header_info.gas_limit, 0x2ffbd2);
+        assert_eq!(header_info.base_fee_per_gas, Some(0x342770c0));
+        assert_eq!(header_info.excess_blob_gas, Some(0x1));
+        assert_eq!(header_info.blob_gas_used, Some(0x1));
+        assert_eq!(header_info.difficulty, U256::ZERO);
+        assert_eq!(
+            header_info.mix_hash,
+            Some(
+                "0xe0d8b4521a7da1582a713244ffb6a86aa1726932087386e2dc7973f43fc6cb24"
+                    .parse()
+                    .unwrap()
+            )
+        );
     }
 }
