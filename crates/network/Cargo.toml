@@ -25,7 +25,10 @@ alloy-network.workspace = true
 alloy-primitives.workspace = true
 alloy-provider.workspace = true
 alloy-rpc-types-eth.workspace = true
-alloy-signer.workspace = true
+
+[dev-dependencies]
+alloy-signer-local = { version = "1.1.2", features = ["keystore"] }
+tokio = { workspace = true, features = ["macros", "rt"] }
 
 [features]
 std = ["op-alloy-consensus/std", "op-alloy-rpc-types/std"]
