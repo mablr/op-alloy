@@ -197,6 +197,12 @@ impl From<OpTxEnvelope> for OpTransactionRequest {
     }
 }
 
+impl From<crate::Transaction> for OpTransactionRequest {
+    fn from(tx: crate::Transaction) -> Self {
+        tx.inner.into_recovered().into_inner().into()
+    }
+}
+
 impl TransactionBuilder7702 for OpTransactionRequest {
     fn authorization_list(&self) -> Option<&Vec<SignedAuthorization>> {
         self.as_ref().authorization_list()
